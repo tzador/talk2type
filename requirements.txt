@@ -1,2 +1,7 @@
 rumps
 pyobjc-framework-Quartz
+sounddevice
+soundfile
+numpy
+pydub
+openai
