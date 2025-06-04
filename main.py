@@ -15,26 +15,24 @@ from Quartz import (
     CFMachPortCreateRunLoopSource,
     CFRunLoopAddSource,
     CFRunLoopGetCurrent,
-    CGEventGetIntegerValueField,
+    CGEventGetFlags,
     CGEventMaskBit,
     CGEventTapCreate,
     CGEventTapEnable,
     kCFRunLoopCommonModes,
-    kCGEventKeyDown,
-    kCGEventKeyUp,
+    kCGEventFlagsChanged,
+    kCGEventFlagMaskAlphaShift,
     kCGHIDEventTap,
     kCGHeadInsertEventTap,
-    kCGKeyboardEventKeycode,
 )
 
 # Constants
-BACKSPACE = 51
-HOLD_DURATION = 1.0  # 1 second
+CAPS_LOCK_MASK = kCGEventFlagMaskAlphaShift
 
 
 class Talk2TypeApp(rumps.App):
     """
-    A macOS menu bar app that records voice when backspace is held for 1+ seconds,
+    A macOS menu bar app that records voice when Caps Lock is ON,
     transcribes it using OpenAI Whisper, and types the result into the focused app.
     """
 
@@ -46,10 +44,10 @@ class Talk2TypeApp(rumps.App):
         self.menu = ["Toggle Icon", None, "Quit"]
 
         # State management
-        self.icon_state = False  # False: idle, True: active
-        self.backspace_pressed = False
-        self.backspace_start_time = None
-        self.timer_thread = None
+        self.icon_state = (
+            False  # False: idle (off.png/white), True: recording (on.png/green)
+        )
+        self.caps_lock_on = False
 
         # Audio recording setup
         self.recording = False
@@ -66,7 +64,7 @@ class Talk2TypeApp(rumps.App):
         print("📱 Menu bar app created with off.png icon")
 
         # Start keyboard monitor in separate thread
-        print("🎹 Starting keyboard monitor thread...")
+        print("🎹 Starting Caps Lock monitor thread...")
         threading.Thread(target=self.monitor_keys, daemon=True).start()
 
     def type_text(self, text):
@@ -190,76 +188,45 @@ class Talk2TypeApp(rumps.App):
         except Exception as e:
             print(f"❌ Failed to save recording: {e}")
 
-    def set_icon_green(self):
-        """Activate recording mode after 1-second hold timer completes."""
-        if self.backspace_pressed:  # Only activate if backspace still held
-            print("✅ 1 second reached - activating!")
+    def handle_caps_lock_change(self, caps_lock_on):
+        """Handle Caps Lock state changes."""
+        if caps_lock_on and not self.caps_lock_on:
+            # Caps Lock turned ON - start recording
+            print("🔒 Caps Lock ON - starting recording")
+            self.caps_lock_on = True
             self.icon_state = True
             self.icon = "on.png"
             self.start_recording()
 
-    def update_icon(self):
-        """Update icon state and handle timer logic for backspace press/release."""
-        if self.backspace_pressed:
-            # Backspace just pressed - start timer
-            self.backspace_start_time = time.time()
-            print("⏰ Backspace pressed - starting 1-second timer...")
-
-            # Cancel any existing timer
-            if self.timer_thread and self.timer_thread.is_alive():
-                print("⏹️  Cancelling previous timer")
-
-            # Start new 1-second timer
-            self.timer_thread = threading.Timer(HOLD_DURATION, self.set_icon_green)
-            self.timer_thread.start()
-
-        else:
-            # Backspace released - deactivate immediately
-            if self.timer_thread and self.timer_thread.is_alive():
-                self.timer_thread.cancel()
-                print("⏹️  Timer cancelled - backspace released early")
-
-            if self.icon_state:
-                print("❌ Backspace released - deactivating")
-                self.stop_recording()
-                self.icon_state = False
-                self.icon = "off.png"
+        elif not caps_lock_on and self.caps_lock_on:
+            # Caps Lock turned OFF - stop recording
+            print("🔓 Caps Lock OFF - stopping recording")
+            self.caps_lock_on = False
+            self.icon_state = False
+            self.icon = "off.png"
+            self.stop_recording()
 
     def monitor_keys(self):
-        """Monitor keyboard events for backspace key presses."""
-        print("🎯 Setting up keyboard event monitoring...")
+        """Monitor Caps Lock state changes."""
+        print("🎯 Setting up Caps Lock event monitoring...")
+        print("💡 Toggle Caps Lock on/off to control recording")
+        print("🎤 Caps Lock ON = Start Recording, Caps Lock OFF = Stop Recording\n")
 
         def callback(proxy, type_, event, refcon):
-            keycode = CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode)
-            is_down = type_ == kCGEventKeyDown
+            if type_ == kCGEventFlagsChanged:
+                flags = CGEventGetFlags(event)
+                caps_lock_on = bool(flags & CAPS_LOCK_MASK)
 
-            # Only handle Backspace
-            if keycode == BACKSPACE:
-                action = "DOWN" if is_down else "UP"
-                print(f"🎯 BACKSPACE (keycode={keycode}) {action}")
-
-                if is_down and not self.backspace_pressed:
-                    # Backspace just pressed
-                    self.backspace_pressed = True
-                    print("➕ Backspace pressed - starting timer")
-                    self.update_icon()
-
-                elif not is_down and self.backspace_pressed:
-                    # Backspace just released
-                    self.backspace_pressed = False
-                    elapsed = (
-                        time.time() - self.backspace_start_time
-                        if self.backspace_start_time
-                        else 0
-                    )
-                    print(f"➖ Backspace released after {elapsed:.1f} seconds")
-                    self.update_icon()
+                print(
+                    f"🔐 Caps Lock: {'🔒 ON' if caps_lock_on else '🔓 OFF'} (flags: {flags})"
+                )
+                self.handle_caps_lock_change(caps_lock_on)
 
             return event
 
-        # Create event tap for keyboard monitoring
-        print("🔧 Creating CGEventTap...")
-        mask = CGEventMaskBit(kCGEventKeyDown) | CGEventMaskBit(kCGEventKeyUp)
+        # Create event tap for Caps Lock monitoring
+        print("🔧 Creating CGEventTap for Caps Lock...")
+        mask = CGEventMaskBit(kCGEventFlagsChanged)
         tap = CGEventTapCreate(
             kCGHIDEventTap, kCGHeadInsertEventTap, 0, mask, callback, None
         )
@@ -282,9 +249,13 @@ class Talk2TypeApp(rumps.App):
 
         CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes)
         CGEventTapEnable(tap, True)
-        print("✅ Keyboard monitoring active - listening for Backspace...")
-        print("🧪 Hold Backspace for 1+ second to activate!")
-        CFRunLoopRun()
+        print("✅ Caps Lock monitoring active!")
+        print("🧪 Turn Caps Lock ON to start recording, OFF to stop!")
+
+        try:
+            CFRunLoopRun()
+        except KeyboardInterrupt:
+            print("\n👋 Caps Lock monitoring stopped")
 
     @rumps.clicked("Toggle Icon")
     def toggle_icon(self, _):

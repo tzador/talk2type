@@ -1,6 +1,6 @@
 # Talk2Type
 
-A macOS menu bar app that converts speech to text using OpenAI Whisper. Hold backspace for 1+ second to record, release to transcribe and auto-type into any application.
+A macOS menu bar app that converts speech to text using OpenAI Whisper. Turn Caps Lock ON to start recording, OFF to stop, transcribe and auto-type into any application.
 
 ## Installation
 
@@ -39,13 +39,13 @@ export OPENAI_API_KEY="your-api-key-here"
 
 3. To dictate text:
    - Click in any text field
-   - Hold Backspace for 1+ second
+   - Turn Caps Lock ON to start recording
    - Speak clearly while icon is green
-   - Release Backspace to stop and auto-type
+   - Turn Caps Lock OFF to stop and auto-type
 
 ## Troubleshooting
 
-- **No keyboard detection**: Check Accessibility permissions
+- **No Caps Lock detection**: Check Accessibility permissions
 - **No audio recording**: Check Microphone permissions
 - **Transcription fails**: Verify API key is set
 - **Text doesn't appear**: Ensure cursor is in a text field
