@@ -5,7 +5,7 @@ A macOS menu bar app that converts speech to text using OpenAI Whisper. Turn Cap
 ## Installation
 
 ```bash
-git clone https://github.com/username/talk2type.git
+git clone git@github.com:tzador/talk2type.git
 cd talk2type
 make init
 make install
